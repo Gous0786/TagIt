@@ -14,25 +14,27 @@ function Home() {
       return;
     }
 
-    const playerId = Math.random().toString(36).substr(2, 9);
-    const payload = {
-      playerId: playerId,
-      playerName: username.trim()
-    };
-
     try {
-      console.log('Sending payload:', payload);
-      const response = await axios.post('http://localhost:8080/api/rooms/join', payload);
-      console.log('Response from server:', response.data);
+      const playerId = Math.random().toString(36).substr(2, 9);
       
-      // Store in sessionStorage instead of localStorage
+      // Store in sessionStorage
       sessionStorage.setItem('playerName', username.trim());
       sessionStorage.setItem('playerId', playerId);
+      
+      console.log('Stored player info:', {
+        playerId,
+        playerName: username.trim()
+      });
+
+      const response = await axios.post('http://localhost:8080/api/rooms/join', {
+        playerId: playerId,
+        playerName: username.trim()
+      });
 
       navigate(`/room/${response.data.roomId}`);
     } catch (error) {
-      console.error('Full error details:', error.response || error);
-      setError('Failed to join room. Please try again.');
+      console.error('Error joining game:', error);
+      setError('Failed to join game');
     }
   };
 

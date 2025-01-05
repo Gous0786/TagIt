@@ -16,7 +16,7 @@ public class Comment {
     public String getCommentId() { return commentId; }
     public void setCommentId(String commentId) { this.commentId = commentId; }
 
-    @DynamoDBAttribute
+    @DynamoDBIndexHashKey(globalSecondaryIndexName = "roomId-index")
     public String getRoomId() { return roomId; }
     public void setRoomId(String roomId) { this.roomId = roomId; }
 

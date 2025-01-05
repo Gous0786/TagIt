@@ -15,12 +15,12 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import java.util.Arrays;
 
+import com.game.model.Room;
+import com.game.model.Comment;
+
 @Configuration
 @Slf4j
 public class DynamoDBConfig {
-
-    @Value("${amazon.dynamodb.endpoint}")
-    private String amazonDynamoDBEndpoint;
 
     @Value("${amazon.aws.accesskey}")
     private String amazonAWSAccessKey;
@@ -32,131 +32,62 @@ public class DynamoDBConfig {
     private String amazonAWSRegion;
 
     @Bean
-    @Primary
     public AmazonDynamoDB amazonDynamoDB() {
         return AmazonDynamoDBClientBuilder.standard()
-            .withEndpointConfiguration(
-                new AwsClientBuilder.EndpointConfiguration(
-                    "http://localhost:8000", 
-                    "local"
-                )
-            )
-            .withCredentials(
-                new AWSStaticCredentialsProvider(
-                    new BasicAWSCredentials("dummy", "dummy")
-                )
-            )
+            .withCredentials(new AWSStaticCredentialsProvider(
+                new BasicAWSCredentials(amazonAWSAccessKey, amazonAWSSecretKey)))
+            .withRegion(amazonAWSRegion)
             .build();
     }
 
     @Bean
-    @Primary
-    public DynamoDBMapper dynamoDBMapper(AmazonDynamoDB amazonDynamoDB) {
-        return new DynamoDBMapper(amazonDynamoDB);
+    public DynamoDBMapper dynamoDBMapper() {
+        return new DynamoDBMapper(amazonDynamoDB());
     }
 
     @PostConstruct
     public void createTables() {
         try {
             AmazonDynamoDB dynamoDB = amazonDynamoDB();
-            
-            // Create tables if they don't exist
-            createCommentsTable(dynamoDB);
-            createRoomsTable(dynamoDB);
-            createPlayersTable(dynamoDB);
-            
-            log.info("DynamoDB tables created/verified successfully");
+            DynamoDBMapper dynamoDBMapper = new DynamoDBMapper(dynamoDB);
+
+            // Create Rooms table
+            CreateTableRequest roomsRequest = dynamoDBMapper
+                .generateCreateTableRequest(Room.class)
+                .withProvisionedThroughput(new ProvisionedThroughput(5L, 5L));
+            createTableIfNotExists(dynamoDB, roomsRequest, "Rooms");
+
+            // Create Comments table with roomId-index
+            CreateTableRequest commentsRequest = dynamoDBMapper
+                .generateCreateTableRequest(Comment.class)
+                .withProvisionedThroughput(new ProvisionedThroughput(5L, 5L))
+                .withGlobalSecondaryIndexes(
+                    new GlobalSecondaryIndex()
+                        .withIndexName("roomId-index")
+                        .withKeySchema(new KeySchemaElement("roomId", KeyType.HASH))
+                        .withProjection(new Projection().withProjectionType(ProjectionType.ALL))
+                        .withProvisionedThroughput(new ProvisionedThroughput(5L, 5L))
+                );
+            createTableIfNotExists(dynamoDB, commentsRequest, "Comments");
+
         } catch (Exception e) {
-            log.error("Error creating DynamoDB tables: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to initialize DynamoDB tables", e);
+            log.error("Error creating DynamoDB tables: " + e.getMessage());
+            throw new RuntimeException("Failed to create/verify tables", e);
         }
     }
 
-    private void createCommentsTable(AmazonDynamoDB dynamoDB) {
-        CreateTableRequest request = new CreateTableRequest()
-            .withTableName("Comments")
-            .withKeySchema(new KeySchemaElement("commentId", KeyType.HASH))
-            .withAttributeDefinitions(
-                new AttributeDefinition("commentId", ScalarAttributeType.S),
-                new AttributeDefinition("roomId", ScalarAttributeType.S)
-            )
-            .withGlobalSecondaryIndexes(
-                new GlobalSecondaryIndex()
-                    .withIndexName("roomId-index")
-                    .withKeySchema(new KeySchemaElement("roomId", KeyType.HASH))
-                    .withProjection(new Projection().withProjectionType(ProjectionType.ALL))
-                    .withProvisionedThroughput(new ProvisionedThroughput(5L, 5L))
-            )
-            .withProvisionedThroughput(new ProvisionedThroughput(5L, 5L));
-
-        createTableAndWaitForActive(dynamoDB, request);
-    }
-
-    private void createRoomsTable(AmazonDynamoDB dynamoDB) {
-        CreateTableRequest request = new CreateTableRequest()
-            .withTableName("Rooms")
-            .withKeySchema(new KeySchemaElement("roomId", KeyType.HASH))
-            .withAttributeDefinitions(
-                new AttributeDefinition("roomId", ScalarAttributeType.S)
-            )
-            .withProvisionedThroughput(new ProvisionedThroughput(5L, 5L));
-
-        createTableAndWaitForActive(dynamoDB, request);
-    }
-
-    private void createPlayersTable(AmazonDynamoDB dynamoDB) {
-        CreateTableRequest request = new CreateTableRequest()
-            .withTableName("Players")
-            .withKeySchema(new KeySchemaElement("playerId", KeyType.HASH))
-            .withAttributeDefinitions(
-                new AttributeDefinition("playerId", ScalarAttributeType.S),
-                new AttributeDefinition("currentRoomId", ScalarAttributeType.S)
-            )
-            .withGlobalSecondaryIndexes(
-                new GlobalSecondaryIndex()
-                    .withIndexName("currentRoomId-index")
-                    .withKeySchema(new KeySchemaElement("currentRoomId", KeyType.HASH))
-                    .withProjection(new Projection().withProjectionType(ProjectionType.ALL))
-                    .withProvisionedThroughput(new ProvisionedThroughput(5L, 5L))
-            )
-            .withProvisionedThroughput(new ProvisionedThroughput(5L, 5L));
-
-        createTableAndWaitForActive(dynamoDB, request);
-    }
-
-    private void createTableAndWaitForActive(AmazonDynamoDB dynamoDB, CreateTableRequest request) {
-        String tableName = request.getTableName();
+    private void createTableIfNotExists(AmazonDynamoDB dynamoDB, CreateTableRequest request, String tableName) {
         try {
-            if (isTableActive(dynamoDB, tableName)) {
-                log.info("Table {} already exists and is active", tableName);
-                return;
-            }
-
-            log.info("Creating table: {}", tableName);
-            dynamoDB.createTable(request);
-
-            log.info("Waiting for table {} to become active...", tableName);
-            long startTime = System.currentTimeMillis();
-            while (!isTableActive(dynamoDB, tableName)) {
-                if (System.currentTimeMillis() - startTime > 60000) { // 1 minute timeout
-                    throw new RuntimeException("Timeout waiting for table " + tableName + " to become active");
-                }
-                Thread.sleep(1000);
-            }
-            log.info("Table {} is now active", tableName);
-
-        } catch (Exception e) {
-            log.error("Error creating/verifying table {}: {}", tableName, e.getMessage());
-            throw new RuntimeException("Failed to create/verify table " + tableName, e);
-        }
-    }
-
-    private boolean isTableActive(AmazonDynamoDB dynamoDB, String tableName) {
-        try {
-            TableDescription table = dynamoDB.describeTable(tableName).getTable();
-            return table != null && table.getTableStatus().equals("ACTIVE");
+            dynamoDB.describeTable(tableName);
+            log.info("Table {} already exists", tableName);
         } catch (ResourceNotFoundException e) {
-            return false;
+            try {
+                dynamoDB.createTable(request);
+                log.info("Created table {}", tableName);
+            } catch (Exception ex) {
+                log.error("Error creating table {}: {}", tableName, ex.getMessage());
+                throw new RuntimeException("Failed to create table " + tableName, ex);
+            }
         }
     }
 } 

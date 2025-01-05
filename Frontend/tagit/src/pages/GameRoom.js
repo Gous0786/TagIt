@@ -43,6 +43,13 @@ const BubbleBackground = React.memo(() => (
   </div>
 ));
 
+// Update the timer constant (if it's defined in frontend)
+const PHASE_DURATIONS = {
+  COMMENTING: 120, // Changed from 60 to 120 seconds (2 minutes)
+  LIKING: 60,
+  RESULTS: 30
+};
+
 function GameRoom() {
   const { roomId } = useParams();
   const { player } = useGame();
@@ -326,41 +333,41 @@ function GameRoom() {
   };
 
   const handleLike = async (commentId) => {
-    if (likedComments.has(commentId)) return;
-
-    // Get the stored playerId
-    const storedPlayerId = localStorage.getItem('playerId');
-
-    if (!storedPlayerId) {
-      console.error('No player ID found');
-      return;
-    }
-
     try {
-      console.log('Liking comment:', {
+      // Get player ID from sessionStorage instead of localStorage
+      const storedPlayerId = sessionStorage.getItem('playerId');
+      const storedPlayerName = sessionStorage.getItem('playerName');
+
+      if (!storedPlayerId) {
+        console.error('No player ID found in session storage');
+        return;
+      }
+
+      console.log('Liking comment with:', {
         commentId,
-        playerId: storedPlayerId
+        playerId: storedPlayerId,
+        playerName: storedPlayerName
       });
 
       await axios.post(
         `http://localhost:8080/api/comments/${commentId}/like`,
-        null,  // no request body needed
+        null,  // no body needed
         {
           params: {
-            playerId: storedPlayerId
+            playerId: storedPlayerId,
+            playerName: storedPlayerName
           }
         }
       );
 
-      setLikedComments(prev => new Set(prev).add(commentId));
+      // Update local state to show the like
+      setLikedComments(prev => new Set([...prev, commentId]));
+      
+      // Optionally refresh comments to get updated likes count
+      await fetchComments();
+
     } catch (error) {
-      console.error('Error liking comment:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        commentId,
-        playerId: storedPlayerId
-      });
+      console.error('Error liking comment:', error);
     }
   };
 
@@ -584,6 +591,30 @@ function GameRoom() {
       </div>
     </div>
   );
+
+  // Add this useEffect to check player info on component mount
+  useEffect(() => {
+    const playerId = sessionStorage.getItem('playerId');
+    const playerName = sessionStorage.getItem('playerName');
+    
+    console.log('Current player info:', { playerId, playerName });
+    
+    if (!playerId || !playerName) {
+      console.error('Missing player information');
+      navigate('/'); // Redirect to home if no player info
+    }
+  }, [navigate]);
+
+  useEffect(() => {
+    // Cleanup function
+    return () => {
+      if (gameStage === STAGES.FINISHED) {
+        // Only clear specific game data, not player info
+        sessionStorage.removeItem(`meme-${roomId}`);
+        setLikedComments(new Set());
+      }
+    };
+  }, [gameStage, roomId]);
 
   return (
     <div>
