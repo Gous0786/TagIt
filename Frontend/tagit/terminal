@@ -1,0 +1,5 @@
+npx create-react-app tagit
+cd tagit
+npm install @stomp/stompjs sockjs-client --save
+rm -rf node_modules
+npm install
