@@ -1,0 +1,80 @@
+{
+  "info": {
+    "name": "Room Mechanism API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Join Room",
+      "request": {
+        "method": "POST",
+        "url": "http://localhost:8080/api/rooms/join",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": {
+            "playerId": "player123",
+            "playerName": "TestPlayer",
+            "status": "ONLINE",
+            "isReady": false
+          }
+        }
+      }
+    },
+    {
+      "name": "Get Active Rooms",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8080/api/rooms?page=0&size=10",
+          "query": [
+            {
+              "key": "page",
+              "value": "0"
+            },
+            {
+              "key": "size",
+              "value": "10"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Leave Room",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "http://localhost:8080/api/rooms/leave?playerId=player123"
+        }
+      }
+    },
+    {
+      "name": "Get Room Players",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:8080/api/rooms/{{roomId}}/players"
+      }
+    },
+    {
+      "name": "Set Player Ready",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "http://localhost:8080/api/rooms/ready?playerId=player123&ready=true"
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "roomId",
+      "value": "room123"
+    }
+  ]
+} 
